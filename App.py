@@ -6,7 +6,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timezone
 
-st.set_page_config(page_title="Pixeling Master DB", page_icon="🌙", layout="wide")
+st.set_page_config(page_title="Pixeling Master DB v2", page_icon="🌙", layout="wide")
 
 st.markdown("""<style>
     .stApp { background-color: #0B0F19 !important; color: #E5E7EB; }
@@ -16,7 +16,7 @@ st.markdown("""<style>
     .grid-card { background: #131B2E; border-radius: 10px; border: 1px solid #212B41; padding: 15px; margin-bottom: 20px; height: auto; }
     .metric-box { background: #1A2338; border-radius: 6px; padding: 8px; margin-top: 5px; border: 1px solid #24314D; font-size: 9pt; }
     .thumb-link img { transition: transform 0.2s ease, opacity 0.2s ease; }
-    .thumb-link img:hover { transform: scale(1.02); opacity: 0.85; pointer: cursor; }
+    .thumb-link img:hover { transform: scale(1.02); opacity: 0.85; cursor: pointer; }
 </style>""", unsafe_allow_html=True)
 
 st.markdown('<div class="brand-title">Pixeling Cloud Sheets DB v2 👑</div><div style="color:#9CA3AF;font-size:9pt;">YouTube Category Multi-Scaler & Tracking Engine</div><br>', unsafe_allow_html=True)
@@ -43,16 +43,18 @@ except Exception as e:
     st.error(f"🚨 자격 증명 파싱 실패. 에러 파트: {e}")
     st.stop()
 
-# 🗄️ 구글 시트 백업 엔진
-def save_data_to_google_sheet(df, period_txt):
+# 🗄️ 구글 시트 백업 엔진 (Target_Category 저장 컬럼 정밀 이식)
+def save_data_to_google_sheet(df, period_txt, category_txt):
     try:
         current_log_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        # 시트가 완전히 비어있을 경우 고도화된 헤더 열 생성
         if len(worksheet.get_all_values()) == 0:
-            worksheet.append_row(["Log_Time", "Target_Period", "Video_URL", "Channel_Name", "Handle", "Format", "Likes", "Comments", "Calculated_Score", "Estimated_Revenue"])
+            worksheet.append_row(["Log_Time", "Target_Category", "Target_Period", "Video_URL", "Channel_Name", "Handle", "Format", "Likes", "Comments", "Calculated_Score", "Estimated_Revenue"])
+        
         rows_to_append = []
         for _, row in df.iterrows():
             rows_to_append.append([
-                current_log_time, period_txt, row["video_url"], row["name"], row["handle"], 
+                current_log_time, category_txt, period_txt, row["video_url"], row["name"], row["handle"], 
                 row["type"], row["likes"], row["comments"], row["score"], row["rev"]
             ])
         worksheet.append_rows(rows_to_append)
@@ -100,7 +102,7 @@ def fetch_engagement_trending_data(days, cc, fmt, cat_id):
             raw_comments = int(stats.get("commentCount", 0))
             raw_views = int(stats.get("viewCount", 0))
             
-            # 🎯 5년 장기 환산 스케일러 연산식 적용
+            # 🎯 장기 변동률 환산 수식 적용
             calc_likes = int((raw_likes / elapsed_days) * days)
             calc_comments = int((raw_comments / elapsed_days) * days)
             calc_views = int((raw_views / elapsed_days) * days)
@@ -129,12 +131,11 @@ def fetch_engagement_trending_data(days, cc, fmt, cat_id):
     df = df.drop_duplicates(subset=["handle"]).sort_values(by="score", ascending=False).reset_index(drop=True)
     return df.head(20)
 
-# 🛠️ 사이드바 컨트롤 패널
+# 🛠️ 사이드바 컨트롤 매트릭스 패널
 st.sidebar.markdown("### 🗄️ DATABASE CONTROL")
 db_view = st.sidebar.checkbox("📂 구글 시트 백업 DB 조회하기")
 
 st.sidebar.markdown("### 📌 FILTER CONFIG")
-# 1. 유튜브 기본 15개 공식 카테고리 원상복구 및 매핑
 CATEGORY_MAP = {
     "전체 (All)": None, "영화 & 애니메이션": "1", "자동차 & 탈것": "2", "음악": "10", 
     "반려동물 & 동물": "15", "스포츠": "17", "여행 & 이벤트": "19", "게임": "20", 
@@ -146,12 +147,11 @@ target_cat_id = CATEGORY_MAP[selected_cat_label]
 
 media_filter = st.sidebar.selectbox("FORMAT", ["전체 통합", "롱폼 전용", "숏폼 전용"])
 
-# 2. 기간 설정을 1일부터 최대 5년까지 대폭 확장
+# 1일에서 최대 5년(1825일) 롱레인지 슬라이더 타임라인 스케일러
 period_label = st.sidebar.select_slider(
     "PERIOD SCALE", 
     options=["1D", "7D", "30D", "90D", "180D", "1 Year", "3 Years", "5 Years"]
 )
-# 라벨별 일수 매핑 연산 테이블
 day_mapping = {"1D": 1, "7D": 7, "30D": 30, "90D": 90, "180D": 180, "1 Year": 365, "3 Years": 1095, "5 Years": 1825}
 days_param = day_mapping[period_label]
 
@@ -168,17 +168,20 @@ if db_view:
             db_df = pd.DataFrame(sheet_data)
             st.dataframe(db_df.tail(100), use_container_width=True)
             st.info(f"💡 현재 구글 시트에 총 {len(db_df)}개의 누적 트렌드 시계열 로그가 보관 중입니다.")
-        else: st.warning("시트에 데이터 로그가 없습니다.")
-    except Exception as e: st.error(f"구글 시트 로드 에러: {e}")
+        else:
+            st.warning("시트에 데이터 로그가 존재하지 않습니다.")
+    except Exception as e:
+        st.error(f"구글 시트 로드 에러: {e}")
 
 if run_engine:
     with st.spinner(f"⚡ {country_code} ({selected_cat_label}) - {period_label} 타겟 환산 연산 중..."): 
         df = fetch_engagement_trending_data(days_param, country_code, media_filter, target_cat_id)
         
     if not df.empty:
-        sheet_sync_success = save_data_to_google_sheet(df, period_label)
+        # 카테고리 정보(selected_cat_label)를 백업 파이프라인에 동시 전송
+        sheet_sync_success = save_data_to_google_sheet(df, period_label, selected_cat_label)
         if sheet_sync_success:
-            st.markdown(f'<div class="url-wrapper">✅ CLOUD SHEET SYNC SUCCESS | 카테고리 [{selected_cat_label}] 기준 {period_label} 데이터가 누적되었습니다.</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="url-wrapper">✅ CLOUD SHEET SYNC SUCCESS | 카테고리 [{selected_cat_label}] 기준 {period_label} 데이터가 실시간 누적되었습니다.</div>', unsafe_allow_html=True)
         
         m = df.iloc[0]
         c = "color:#F87171;" if m['type'] == "Shorts" else "color:#60A5FA;"
